@@ -104,7 +104,7 @@
     const vkMatch = url.match(vkPattern);
     if (!vkMatch) return null;
 
-    const subtitleElement = document.getElementById("vk_external_ru_0") || document.getElementById("vk_external_ru_1");
+    const subtitleElement =  document.querySelector('[id^="vk_external_ru_"]')
     if (subtitleElement) {
       const subtitleUrl = subtitleElement.getAttribute("src");
       if (subtitleUrl) return subtitleUrl;
@@ -112,7 +112,7 @@
 
     return await new Promise((resolve) => {
       const checkForSubtitle = () => {
-        const subtitleElement = document.getElementById("vk_external_ru_0") || document.getElementById("vk_external_ru_1");
+        const subtitleElement =  document.querySelector('[id^="vk_external_ru_"]')
         if (subtitleElement) {
           const subtitleUrl = subtitleElement.getAttribute("src");
           if (subtitleUrl) resolve(subtitleUrl);
