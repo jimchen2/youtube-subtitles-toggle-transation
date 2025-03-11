@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         YouTube Toggle Translation for French, German, Russian, Ukrainian
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @license      Unlicense
-// @description  Toggle translation for YouTube videos
+// @description  Toggle translation for YouTube videos with a fixed translation box
 // @author       Jim Chen
 // @homepage     https://jimchen.me
 // @match        https://www.youtube.com/*
@@ -24,12 +24,13 @@
   handleVideoNavigation();
 
   async function handleVideoNavigation() {
-    if (processingSubtitles == true) return;
+    if (processingSubtitles) return;
     processingSubtitles = true;
     let subtitleURL = await extractSubtitleUrl();
-    if (subtitleURL == null) return;
-    // removeSubs();
-    // await addOneSubtitle(subtitleURL + "&tlang=en");
+    if (!subtitleURL) {
+      processingSubtitles = false;
+      return;
+    }
     await addOneSubtitle(subtitleURL);
     processingSubtitles = false;
   }
@@ -42,21 +43,14 @@
         embed: /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([^?]+)/,
         mobile: /(?:https?:\/\/)?(?:www\.)?youtu\.be\/([^?]+)/,
       };
-
-      let videoID = null;
-
-      if (patterns.standard.test(url)) {
-        videoID = url.match(patterns.standard)[1];
-      } else if (patterns.embed.test(url)) {
-        videoID = url.match(patterns.embed)[1];
-      } else if (patterns.mobile.test(url)) {
-        videoID = url.match(patterns.mobile)[1];
+      for (let pattern in patterns) {
+        const match = url.match(patterns[pattern]);
+        if (match) return match[1];
       }
-
-      return videoID;
+      return null;
     }
     let videoID = extractYouTubeVideoID();
-    if (videoID == null) return;
+    if (!videoID) return;
 
     const playerData = await new Promise((resolve) => {
       const checkForPlayer = () => {
@@ -84,121 +78,54 @@
   }
 
   async function addOneSubtitle(url, maxRetries = 5, delay = 1000) {
-    // Step 1. Parse VTT
-    // Step 2. Create HTML Element
-    // Step 3. Set up Event Listener
-    // Step 4. Display Subtitle and Hover Translate
-
-    let currentVideo = null;
-    currentVideo = document.querySelector("video");
+    let currentVideo = document.querySelector("video");
     if (!currentVideo) return;
 
     try {
-      // Step 1 - Parse VTT
-      // Example:
-
-      // 00:00:00.480 --> 00:00:02.950 align:start position:0%
-      // [музыка]
-      // в<00:00:00.640><c> тот</c><00:00:00.799><c> день</c><00:00:01.000><c> КСИ</c><00:00:01.439><c> решила</c><00:00:01.800><c> встать</c><00:00:02.080><c> в</c><00:00:02.200><c> 4</c><00:00:02.639><c> утра</c>
-
-      // 00:00:02.950 --> 00:00:02.960 align:start position:0%
-      // в тот день КСИ решила встать в 4 утра
-
-      // 00:00:02.960 --> 00:00:05.869 align:start position:0%
-      // в тот день КСИ решила встать в 4 утра
-      // чтобы<00:00:03.240><c> подготовиться</c><00:00:03.840><c> к</c>
-
-      // 00:00:05.869 --> 00:00:05.879 align:start position:0%
-      // чтобы подготовиться к
-
-      // Processed like:
-
-      // Start: 00:00:00.480 End: 00:00:02.950
-      // Textlines[0]: [музыка]
-      //  Textlines[1]: в<00:00:00.640><c> тот</c><00:00:00.799><c> день</c><00:00:01.000><c> КСИ</c><00:00:01.439><c> решила</c><00:00:01.800><c> встать</c><00:00:02.080><c> в</c><00:00:02.200><c> 4</c><00:00:02.639><c> утра</c>
-
-      // Start: 00:00:02.950 End: 00:00:02.960
-      // Textlines[0]:  в тот день КСИ решила встать в 4 утра
-
-      // Start: 00:00:02.960 End: 00:00:05.869
-      // Textlines[0]:  в тот день КСИ решила встать в 4 утра
-
-      //  Textlines[1]:  чтобы<00:00:03.240><c> подготовиться</c><00:00:03.840><c> к</c>
-
-      // Start: 00:00:05.869 End: 00:00:05.879
-      // Textlines[0]: чтобы подготовиться к
-
+      // Step 1: Parse VTT
       console.log(`[Dual Subs] Starting Step 1, Subtitle URL ${url}`);
       const response = await fetch(url);
       const subtitleData = await response.text();
 
-      // Convert timestamp string (e.g., "00:00:02.950") to seconds
       function parseVTTTime(timeStr) {
-        const parts = timeStr.split(/[:.]/); // Split on : and . (simpler than /[:,\.]/ since comma isn't used)
-        const hours = parseInt(parts[0], 10);
-        const minutes = parseInt(parts[1], 10);
-        const seconds = parseInt(parts[2], 10);
-        const milliseconds = parseInt(parts[3], 10);
-        return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+        const parts = timeStr.split(/[:.]/);
+        return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]) + parseInt(parts[3]) / 1000;
       }
 
-      // Parse VTT content into a structured queue
       function parseVTT(subtitleData) {
         const subtitleQueue = [];
         const lines = subtitleData.trim().split("\n");
         let i = 0;
-
-        // Skip header (e.g., "WEBVTT" or other metadata)
-        while (i < lines.length && !lines[i].includes("-->")) {
-          i++;
-        }
-
-        // Process subtitle blocks
+        while (i < lines.length && !lines[i].includes("-->")) i++;
         while (i < lines.length) {
           const line = lines[i].trim();
-
           if (!line) {
             i++;
             continue;
           }
-
-          // Look for timestamp line
           const timeMatch = line.match(/(\d+:\d+:\d+\.\d+)\s+-->\s+(\d+:\d+:\d+\.\d+)/);
           if (timeMatch) {
             const start = parseVTTTime(timeMatch[1]);
             const end = parseVTTTime(timeMatch[2]);
             const textLines = [];
             i++;
-
-            // Collect all text lines until next empty line or end
             while (i < lines.length && lines[i].trim()) {
               textLines.push(lines[i].trim());
               i++;
             }
-
             if (textLines.length > 0) {
-              subtitleQueue.push({
-                start,
-                end,
-                textLines,
-              });
+              subtitleQueue.push({ start, end, textLines });
             }
           } else {
-            i++; // Skip malformed or unexpected lines
+            i++;
           }
         }
-
         return subtitleQueue;
       }
 
-      var subtitleQueue = parseVTT(subtitleData);
+      const subtitleQueue = parseVTT(subtitleData);
 
-      // Step 2 - Create HTML Element
-      // Add Sliding Effect
-      // `coloredSpan.style.cssText`
-      // #ffffff 50% for subtitles displayed,  #888888 for upcoming subtitles
-      // `animation: slideColor 10s linear` the sliding time
-
+      // Step 2: Create HTML Elements with Fixed Translation Box
       console.log(`[Dual Subs] Starting Step 2, Trying to Insert Subtitle Element`);
       function createCaptionWindow() {
         const videoPlayer = document.querySelector(".html5-video-player");
@@ -209,19 +136,17 @@
 
         const captionWindow = document.createElement("div");
         captionWindow.className = "caption-window ytp-caption-window-bottom";
-        captionWindow.dir = "ltr";
-        captionWindow.tabIndex = 0;
         captionWindow.style.cssText = `
-    touch-action: none;
-    background-color: rgba(8, 8, 8, 0.25);
-    text-align: center;
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: 10%;
-    width: 90%; /* Prevents overflow on smaller screens */
-    max-width: 800px; /* Optional: Limits width on larger screens */
-  `;
+                  touch-action: none;
+                  background-color: rgba(8, 8, 8, 0.25);
+                  text-align: center;
+                  position: absolute;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  bottom: 10%;
+                  width: 90%;
+                  max-width: 800px;
+              `;
 
         const captionsText = document.createElement("span");
         captionsText.className = "captions-text";
@@ -234,89 +159,80 @@
         const ytpCaptionSegment = document.createElement("span");
         ytpCaptionSegment.className = "ytp-caption-segment";
         ytpCaptionSegment.style.cssText = `
-    display: inline-block;
-    white-space: pre-wrap;
-    background: rgba(8, 8, 8, 0.75);
-    font-size: 2.5vw; /* Scales with viewport width */
-    color: rgb(255, 255, 255);
-    fill: rgb(255, 255, 255);
-  `;
+                  display: inline-block;
+                  white-space: pre-wrap;
+                  background: rgba(8, 8, 8, 0.75);
+                  font-size: 2.5vw;
+                  color: rgb(255, 255, 255);
+                  fill: rgb(255, 255, 255);
+              `;
 
-        const textContent = "Userscript for Subtitles Starting";
-        const coloredSpan = document.createElement("span");
-        coloredSpan.textContent = textContent;
-        coloredSpan.style.cssText = `
-    background: linear-gradient(to right, #ffffff 50%, #888888 50%);
-    background-size: 200% 100%;
-    background-position: 100%;
-    color: transparent;
-    background-clip: text;
-    -webkit-background-clip: text;
-    animation: slideColor 10s linear infinite;
-  `;
+        // Add Fixed Translation Box
+        const translationBox = document.createElement("div");
+        translationBox.className = "translation-box";
+        translationBox.style.cssText = `
+                  position: absolute;
+                  background: rgba(0, 0, 0, 0.9);
+                  color: white;
+                  padding: 8px;
+                  border-radius: 4px;
+                  font-size: 16px;
+                  top: -40px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  z-index: 9999;
+                  display: none;
+              `;
 
-        const styleSheet = document.createElement("style");
-        styleSheet.textContent = `
-    @keyframes slideColor {
-      0% { background-position: 100%; }
-      100% { background-position: 0%; }
-    }
-    @media (max-width: 768px) {
-      .ytp-caption-segment {
-        font-size: 20px; /* Fixed size for mobile */
-      }
-    }
-  `;
-        document.head.appendChild(styleSheet);
-
-        ytpCaptionSegment.appendChild(coloredSpan);
+        captionWindow.appendChild(translationBox);
         captionVisualLine.appendChild(ytpCaptionSegment);
         captionsText.appendChild(captionVisualLine);
         captionWindow.appendChild(captionsText);
         videoPlayer.appendChild(captionWindow);
 
-        return ytpCaptionSegment;
+        return { ytpCaptionSegment, translationBox };
       }
 
-      var ytpCaptionSegment = createCaptionWindow();
-      if (!ytpCaptionSegment) return;
+      const { ytpCaptionSegment, translationBox } = createCaptionWindow() || {};
+      if (!ytpCaptionSegment || !translationBox) return;
 
-      // Step 3 - Setup Event Listener for Subtitle Time Change
+      // Step 3: Setup Event Listener
+      currentVideo.addEventListener("timeupdate", () => {
+        const currentTime = currentVideo.currentTime;
+        const currentSubtitle = subtitleQueue.find((sub) => currentTime >= sub.start && currentTime <= sub.end);
+        updateSubtitle(currentSubtitle);
+      });
 
-      function setupTimeUpdateListener() {
-        currentVideo.addEventListener("timeupdate", () => {
-          const currentTime = currentVideo.currentTime;
-          const currentSubtitle = subtitleQueue.find((sub) => currentTime >= sub.start && currentTime <= sub.end);
-          updateSubtitle(currentSubtitle);
-        });
-      }
-      setupTimeUpdateListener();
-
-      // Step 4 - Display Subtitle
-      // Use Google Translation API https://translate.googleapis.com
-      // For each word, not sentence
-      // Add an eventlistener to Subtitles Hovering
+      // Step 4: Display Subtitle and Fixed Translation
       const translationCache = new Map();
 
       async function translateText(text, targetLang = "en") {
-        if (translationCache.has(text)) {
-          return translationCache.get(text); // Return cached result
-        }
+        if (translationCache.has(text)) return translationCache.get(text);
         try {
           const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
           const response = await fetch(url);
           const data = await response.json();
           const translatedText = data[0][0][0];
-          translationCache.set(text, translatedText); // Cache the result
+          translationCache.set(text, translatedText);
           return translatedText;
         } catch (error) {
           console.error("[Dual Subs] Translation error:", error);
-          return text; // Fallback to original text
+          return text;
         }
+      }
+
+      // Debounce function to limit rapid hover events
+      function debounce(func, wait) {
+        let timeout;
+        return function (...args) {
+          clearTimeout(timeout);
+          timeout = setTimeout(() => func.apply(this, args), wait);
+        };
       }
 
       function updateSubtitle(currentSubtitle) {
         while (ytpCaptionSegment.firstChild) ytpCaptionSegment.removeChild(ytpCaptionSegment.firstChild);
+        translationBox.style.display = "none"; // Hide translation box by default
 
         if (!currentSubtitle) {
           ytpCaptionSegment.style.display = "none";
@@ -325,19 +241,18 @@
 
         ytpCaptionSegment.style.display = "inline-block";
 
-        currentSubtitle.textLines.forEach((line, lineIndex) => {
+        currentSubtitle.textLines.forEach((line) => {
           const lineSpan = document.createElement("span");
           lineSpan.style.display = "block";
 
           if (line.includes("<c>")) {
             const currentTime = currentVideo.currentTime;
             const timeTagRegex = /<(\d{2}:\d{2}:\d{2}\.\d{3})><c>(.*?)<\/c>/g;
-            let matches = [];
-            let match;
             let lastIndex = 0;
             let wordArray = [];
             let timeArray = [];
 
+            let match;
             while ((match = timeTagRegex.exec(line)) !== null) {
               const timeStr = match[1];
               const text = match[2];
@@ -353,7 +268,6 @@
 
               wordArray.push(text);
               timeArray.push(time);
-              matches.push({ time, text });
               lastIndex = timeTagRegex.lastIndex;
             }
 
@@ -367,20 +281,15 @@
 
             let currentWordIndex = 0;
             for (let i = 0; i < wordArray.length; i++) {
-              if (currentTime >= timeArray[i]) {
-                currentWordIndex = i;
-              } else {
-                break;
-              }
+              if (currentTime >= timeArray[i]) currentWordIndex = i;
+              else break;
             }
 
             wordArray.forEach((word, index) => {
-              const wordContainer = document.createElement("span");
-              wordContainer.className = "subtitle-word";
-              wordContainer.style.position = "relative";
-
               const wordSpan = document.createElement("span");
               wordSpan.textContent = word + " ";
+              wordSpan.className = "subtitle-word";
+              wordSpan.style.cursor = "pointer";
 
               if (index < currentWordIndex) {
                 wordSpan.style.color = "#ffffff";
@@ -389,74 +298,53 @@
                 const endTime = index + 1 < timeArray.length ? timeArray[index + 1] : currentSubtitle.end;
                 const progress = (currentTime - startTime) / (endTime - startTime);
                 wordSpan.style.cssText = `
-                              background: linear-gradient(to right, #ffffff 50%, #888888 50%);
-                              background-size: 200% 100%;
-                              background-position: ${100 - progress * 100}%;
-                              color: transparent;
-                              background-clip: text;
-                              -webkit-background-clip: text;
-                              transition: background-position 0.1s linear;
-                          `;
+                                  background: linear-gradient(to right, #ffffff 50%, #888888 50%);
+                                  background-size: 200% 100%;
+                                  background-position: ${100 - progress * 100}%;
+                                  color: transparent;
+                                  background-clip: text;
+                                  -webkit-background-clip: text;
+                                  transition: background-position 0.1s linear;
+                              `;
               } else {
                 wordSpan.style.color = "#888888";
               }
 
-              // Tooltip for translation
-              const tooltip = document.createElement("span");
-              tooltip.className = "translation-tooltip";
-              tooltip.textContent = "";
+              // Debounced hover for translation
+              const showTranslation = debounce(async () => {
+                const translation = await translateText(word);
+                translationBox.textContent = translation;
+                translationBox.style.display = "block";
+              }, 200);
 
-              // Fetch translation on hover
-              let isTranslated = false;
-              wordContainer.addEventListener("mouseenter", async () => {
-                if (!isTranslated) {
-                  const translation = await translateText(word);
-                  tooltip.textContent = translation;
-                  isTranslated = true; // Prevent repeated fetches
-                }
+              wordSpan.addEventListener("mouseenter", showTranslation);
+              wordSpan.addEventListener("mouseleave", () => {
+                translationBox.style.display = "none";
               });
 
-              wordContainer.addEventListener("mousemove", (e) => {
-                tooltip.style.left = `${e.offsetX}px`;
-              });
-
-              wordContainer.appendChild(wordSpan);
-              wordContainer.appendChild(tooltip);
-              lineSpan.appendChild(wordContainer);
+              lineSpan.appendChild(wordSpan);
             });
           } else {
-            // Simple lines without <c> tags
             const words = line.split(" ");
             words.forEach((word) => {
-              const wordContainer = document.createElement("span");
-              wordContainer.className = "subtitle-word";
-              wordContainer.style.position = "relative";
-
               const wordSpan = document.createElement("span");
               wordSpan.textContent = word + " ";
+              wordSpan.className = "subtitle-word";
               wordSpan.style.color = "#ffffff";
+              wordSpan.style.cursor = "pointer";
 
-              const tooltip = document.createElement("span");
-              tooltip.className = "translation-tooltip";
-              tooltip.textContent = ""; // Initially empty
+              const showTranslation = debounce(async () => {
+                const translation = await translateText(word);
+                translationBox.textContent = translation;
+                translationBox.style.display = "block";
+              }, 200);
 
-              // Fetch translation on hover
-              let isTranslated = false;
-              wordContainer.addEventListener("mouseenter", async () => {
-                if (!isTranslated) {
-                  const translation = await translateText(word);
-                  tooltip.textContent = translation;
-                  isTranslated = true; // Prevent repeated fetches
-                }
+              wordSpan.addEventListener("mouseenter", showTranslation);
+              wordSpan.addEventListener("mouseleave", () => {
+                translationBox.style.display = "none";
               });
 
-              wordContainer.addEventListener("mousemove", (e) => {
-                tooltip.style.left = `${e.offsetX}px`;
-              });
-
-              wordContainer.appendChild(wordSpan);
-              wordContainer.appendChild(tooltip);
-              lineSpan.appendChild(wordContainer);
+              lineSpan.appendChild(wordSpan);
             });
           }
 
@@ -464,45 +352,31 @@
         });
       }
 
-      // Add CSS for tooltip
+      // Add CSS
       const styleSheet = document.createElement("style");
       styleSheet.textContent = `
-        @keyframes slideColor {
-            0% { background-position: 100%; }
-            100% { background-position: 0%; }
-        }
-
-        .translation-tooltip {
-            position: absolute;
-            background: rgba(0, 0, 0, 0.9);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 14px;
-            pointer-events: none;
-            z-index: 9999;
-            top: -30px; /* Moves the tooltip 30px above the word */
-            left: 50%; /* Centers it horizontally relative to the word */
-            transform: translateX(-50%); /* Centers it precisely */
-            margin-bottom: 5px;
-            visibility: hidden;
-            opacity: 0;
-            transition: opacity 0.1s;
-        }
-        .subtitle-word:hover .translation-tooltip {
-            visibility: visible;
-            opacity: 1;
-        }
-            @media (max-width: 768px) {
-            .ytp-caption-segment {
-                font-size: 20px;
-            }
-        }
-    `;
+              @keyframes slideColor {
+                  0% { background-position: 100%; }
+                  100% { background-position: 0%; }
+              }
+              .subtitle-word:hover {
+                  text-decoration: underline;
+              }
+              @media (max-width: 768px) {
+                  .ytp-caption-segment {
+                      font-size: 20px;
+                  }
+                  .translation-box {
+                      font-size: 14px;
+                      padding: 6px;
+                  }
+              }
+          `;
       document.head.appendChild(styleSheet);
 
-      console.log(`[Dual Subs] Starting Step 5, Adding Hover Translation Effect`);
+      console.log(`[Dual Subs] Subtitle and Translation Setup Complete`);
     } catch (error) {
+      console.error("[Dual Subs] Error:", error);
       if (maxRetries > 0) {
         await new Promise((resolve) => setTimeout(resolve, delay));
         return addOneSubtitle(url, maxRetries - 1, delay);
