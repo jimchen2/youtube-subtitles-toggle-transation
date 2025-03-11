@@ -296,228 +296,212 @@
       // Use Google Translation API https://translate.googleapis.com
       // For each word, not sentence
       // Add an eventlistener to Subtitles Hovering
+      const translationCache = new Map();
 
-      // ... (keeping the initial parts of the script unchanged)
+      async function translateText(text, targetLang = "en") {
+        if (translationCache.has(text)) {
+          return translationCache.get(text); // Return cached result
+        }
+        try {
+          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+          const response = await fetch(url);
+          const data = await response.json();
+          const translatedText = data[0][0][0];
+          translationCache.set(text, translatedText); // Cache the result
+          return translatedText;
+        } catch (error) {
+          console.error("[Dual Subs] Translation error:", error);
+          return text; // Fallback to original text
+        }
+      }
 
-      async function addOneSubtitle(url, maxRetries = 5, delay = 1000) {
-        // ... (keeping previous code up to Step 4 unchanged)
+      function updateSubtitle(currentSubtitle) {
+        while (ytpCaptionSegment.firstChild) ytpCaptionSegment.removeChild(ytpCaptionSegment.firstChild);
 
-        // Step 4 - Display Subtitle
-        const translationCache = new Map();
-        let isVideoPlaying = false;
-
-        // Track video play state
-        currentVideo.addEventListener("play", () => {
-          isVideoPlaying = true;
-        });
-        currentVideo.addEventListener("pause", () => {
-          isVideoPlaying = false;
-        });
-
-        async function translateText(text, targetLang = "en") {
-          if (translationCache.has(text)) {
-            return translationCache.get(text);
-          }
-          try {
-            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            const translatedText = data[0][0][0];
-            translationCache.set(text, translatedText);
-            return translatedText;
-          } catch (error) {
-            console.error("[Dual Subs] Translation error:", error);
-            return text;
-          }
+        if (!currentSubtitle) {
+          ytpCaptionSegment.style.display = "none";
+          return;
         }
 
-        function updateSubtitle(currentSubtitle) {
-          while (ytpCaptionSegment.firstChild) ytpCaptionSegment.removeChild(ytpCaptionSegment.firstChild);
+        ytpCaptionSegment.style.display = "inline-block";
 
-          if (!currentSubtitle) {
-            ytpCaptionSegment.style.display = "none";
-            return;
-          }
+        currentSubtitle.textLines.forEach((line, lineIndex) => {
+          const lineSpan = document.createElement("span");
+          lineSpan.style.display = "block";
 
-          ytpCaptionSegment.style.display = "inline-block";
+          if (line.includes("<c>")) {
+            const currentTime = currentVideo.currentTime;
+            const timeTagRegex = /<(\d{2}:\d{2}:\d{2}\.\d{3})><c>(.*?)<\/c>/g;
+            let matches = [];
+            let match;
+            let lastIndex = 0;
+            let wordArray = [];
+            let timeArray = [];
 
-          currentSubtitle.textLines.forEach((line, lineIndex) => {
-            const lineSpan = document.createElement("span");
-            lineSpan.style.display = "block";
+            while ((match = timeTagRegex.exec(line)) !== null) {
+              const timeStr = match[1];
+              const text = match[2];
+              const time = parseVTTTime(timeStr);
 
-            if (line.includes("<c>")) {
-              const currentTime = currentVideo.currentTime;
-              const timeTagRegex = /<(\d{2}:\d{2}:\d{2}\.\d{3})><c>(.*?)<\/c>/g;
-              let matches = [];
-              let match;
-              let lastIndex = 0;
-              let wordArray = [];
-              let timeArray = [];
-
-              while ((match = timeTagRegex.exec(line)) !== null) {
-                const timeStr = match[1];
-                const text = match[2];
-                const time = parseVTTTime(timeStr);
-
-                if (match.index > lastIndex) {
-                  const untaggedText = line.slice(lastIndex, match.index).trim();
-                  if (untaggedText) {
-                    wordArray.push(untaggedText);
-                    timeArray.push(currentSubtitle.start);
-                  }
-                }
-
-                wordArray.push(text);
-                timeArray.push(time);
-                matches.push({ time, text });
-                lastIndex = timeTagRegex.lastIndex;
-              }
-
-              if (lastIndex < line.length) {
-                const untaggedText = line.slice(lastIndex).trim();
+              if (match.index > lastIndex) {
+                const untaggedText = line.slice(lastIndex, match.index).trim();
                 if (untaggedText) {
                   wordArray.push(untaggedText);
                   timeArray.push(currentSubtitle.start);
                 }
               }
 
-              let currentWordIndex = 0;
-              for (let i = 0; i < wordArray.length; i++) {
-                if (currentTime >= timeArray[i]) {
-                  currentWordIndex = i;
-                } else {
-                  break;
-                }
-              }
-
-              wordArray.forEach((word, index) => {
-                const wordContainer = document.createElement("span");
-                wordContainer.className = "subtitle-word";
-                wordContainer.style.position = "relative";
-
-                const wordSpan = document.createElement("span");
-                wordSpan.textContent = word + " ";
-
-                // Apply color based on timing
-                if (index < currentWordIndex) {
-                  wordSpan.style.color = "#ffffff";
-                } else if (index === currentWordIndex && currentTime >= timeArray[index]) {
-                  const startTime = timeArray[index];
-                  const endTime = index + 1 < timeArray.length ? timeArray[index + 1] : currentSubtitle.end;
-                  const progress = (currentTime - startTime) / (endTime - startTime);
-                  wordSpan.style.cssText = `
-                          background: linear-gradient(to right, #ffffff 50%, #888888 50%);
-                          background-size: 200% 100%;
-                          background-position: ${100 - progress * 100}%;
-                          color: transparent;
-                          background-clip: text;
-                          -webkit-background-clip: text;
-                          transition: background-position 0.1s linear;
-                      `;
-                } else {
-                  wordSpan.style.color = "#888888";
-                }
-
-                const tooltip = document.createElement("span");
-                tooltip.className = "translation-tooltip";
-                tooltip.textContent = "";
-
-                // Only fetch and show translation on hover
-                let isTranslated = false;
-                wordContainer.addEventListener("mouseenter", async () => {
-                  if (!isTranslated && !isVideoPlaying) {
-                    const translation = await translateText(word);
-                    tooltip.textContent = translation;
-                    isTranslated = true;
-                  }
-                });
-
-                wordContainer.addEventListener("mousemove", (e) => {
-                  tooltip.style.left = `${e.offsetX}px`;
-                });
-
-                wordContainer.appendChild(wordSpan);
-                wordContainer.appendChild(tooltip);
-                lineSpan.appendChild(wordContainer);
-              });
-            } else {
-              // Simple lines without <c> tags
-              const words = line.split(" ");
-              words.forEach((word) => {
-                const wordContainer = document.createElement("span");
-                wordContainer.className = "subtitle-word";
-                wordContainer.style.position = "relative";
-
-                const wordSpan = document.createElement("span");
-                wordSpan.textContent = word + " ";
-                wordSpan.style.color = "#ffffff";
-
-                const tooltip = document.createElement("span");
-                tooltip.className = "translation-tooltip";
-                tooltip.textContent = "";
-
-                let isTranslated = false;
-                wordContainer.addEventListener("mouseenter", async () => {
-                  if (!isTranslated && !isVideoPlaying) {
-                    const translation = await translateText(word);
-                    tooltip.textContent = translation;
-                    isTranslated = true;
-                  }
-                });
-
-                wordContainer.addEventListener("mousemove", (e) => {
-                  tooltip.style.left = `${e.offsetX}px`;
-                });
-
-                wordContainer.appendChild(wordSpan);
-                wordContainer.appendChild(tooltip);
-                lineSpan.appendChild(wordContainer);
-              });
+              wordArray.push(text);
+              timeArray.push(time);
+              matches.push({ time, text });
+              lastIndex = timeTagRegex.lastIndex;
             }
 
-            ytpCaptionSegment.appendChild(lineSpan);
-          });
+            if (lastIndex < line.length) {
+              const untaggedText = line.slice(lastIndex).trim();
+              if (untaggedText) {
+                wordArray.push(untaggedText);
+                timeArray.push(currentSubtitle.start);
+              }
+            }
+
+            let currentWordIndex = 0;
+            for (let i = 0; i < wordArray.length; i++) {
+              if (currentTime >= timeArray[i]) {
+                currentWordIndex = i;
+              } else {
+                break;
+              }
+            }
+
+            wordArray.forEach((word, index) => {
+              const wordContainer = document.createElement("span");
+              wordContainer.className = "subtitle-word";
+              wordContainer.style.position = "relative";
+
+              const wordSpan = document.createElement("span");
+              wordSpan.textContent = word + " ";
+
+              if (index < currentWordIndex) {
+                wordSpan.style.color = "#ffffff";
+              } else if (index === currentWordIndex && currentTime >= timeArray[index]) {
+                const startTime = timeArray[index];
+                const endTime = index + 1 < timeArray.length ? timeArray[index + 1] : currentSubtitle.end;
+                const progress = (currentTime - startTime) / (endTime - startTime);
+                wordSpan.style.cssText = `
+                              background: linear-gradient(to right, #ffffff 50%, #888888 50%);
+                              background-size: 200% 100%;
+                              background-position: ${100 - progress * 100}%;
+                              color: transparent;
+                              background-clip: text;
+                              -webkit-background-clip: text;
+                              transition: background-position 0.1s linear;
+                          `;
+              } else {
+                wordSpan.style.color = "#888888";
+              }
+
+              // Tooltip for translation
+              const tooltip = document.createElement("span");
+              tooltip.className = "translation-tooltip";
+              tooltip.textContent = "";
+
+              // Fetch translation on hover
+              let isTranslated = false;
+              wordContainer.addEventListener("mouseenter", async () => {
+                if (!isTranslated) {
+                  const translation = await translateText(word);
+                  tooltip.textContent = translation;
+                  isTranslated = true; // Prevent repeated fetches
+                }
+              });
+
+              wordContainer.addEventListener("mousemove", (e) => {
+                tooltip.style.left = `${e.offsetX}px`;
+              });
+
+              wordContainer.appendChild(wordSpan);
+              wordContainer.appendChild(tooltip);
+              lineSpan.appendChild(wordContainer);
+            });
+          } else {
+            // Simple lines without <c> tags
+            const words = line.split(" ");
+            words.forEach((word) => {
+              const wordContainer = document.createElement("span");
+              wordContainer.className = "subtitle-word";
+              wordContainer.style.position = "relative";
+
+              const wordSpan = document.createElement("span");
+              wordSpan.textContent = word + " ";
+              wordSpan.style.color = "#ffffff";
+
+              const tooltip = document.createElement("span");
+              tooltip.className = "translation-tooltip";
+              tooltip.textContent = ""; // Initially empty
+
+              // Fetch translation on hover
+              let isTranslated = false;
+              wordContainer.addEventListener("mouseenter", async () => {
+                if (!isTranslated) {
+                  const translation = await translateText(word);
+                  tooltip.textContent = translation;
+                  isTranslated = true; // Prevent repeated fetches
+                }
+              });
+
+              wordContainer.addEventListener("mousemove", (e) => {
+                tooltip.style.left = `${e.offsetX}px`;
+              });
+
+              wordContainer.appendChild(wordSpan);
+              wordContainer.appendChild(tooltip);
+              lineSpan.appendChild(wordContainer);
+            });
+          }
+
+          ytpCaptionSegment.appendChild(lineSpan);
+        });
+      }
+
+      // Add CSS for tooltip
+      const styleSheet = document.createElement("style");
+      styleSheet.textContent = `
+        @keyframes slideColor {
+            0% { background-position: 100%; }
+            100% { background-position: 0%; }
         }
 
-        // Updated CSS without blinking during playback
-        const styleSheet = document.createElement("style");
-        styleSheet.textContent = `
-      @keyframes slideColor {
-          0% { background-position: 100%; }
-          100% { background-position: 0%; }
-      }
-      .translation-tooltip {
-          position: absolute;
-          background: rgba(0, 0, 0, 0.9);
-          color: white;
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 14px;
-          pointer-events: none;
-          z-index: 9999;
-          top: -30px;
-          left: 50%;
-          transform: translateX(-50%);
-          margin-bottom: 5px;
-          visibility: hidden;
-          opacity: 0;
-          transition: opacity 0.2s ease-in-out;
-      }
-      .subtitle-word:hover .translation-tooltip {
-          visibility: visible;
-          opacity: 1;
-          animation: none; /* Remove any blinking animation */
-      }
-      @media (max-width: 768px) {
-          .ytp-caption-segment {
-              font-size: 20px;
-          }
-      }
-  `;
-        document.head.appendChild(styleSheet);
+        .translation-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 9999;
+            top: -30px; /* Moves the tooltip 30px above the word */
+            left: 50%; /* Centers it horizontally relative to the word */
+            transform: translateX(-50%); /* Centers it precisely */
+            margin-bottom: 5px;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.1s;
+        }
+        .subtitle-word:hover .translation-tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+            @media (max-width: 768px) {
+            .ytp-caption-segment {
+                font-size: 20px;
+            }
+        }
+    `;
+      document.head.appendChild(styleSheet);
 
-        console.log(`[Dual Subs] Starting Step 5, Adding Stable Hover Translation Effect`);
-      }
+      console.log(`[Dual Subs] Starting Step 5, Adding Hover Translation Effect`);
     } catch (error) {
       if (maxRetries > 0) {
         await new Promise((resolve) => setTimeout(resolve, delay));
