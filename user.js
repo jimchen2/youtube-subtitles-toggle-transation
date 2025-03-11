@@ -138,7 +138,6 @@
         captionWindow.className = "caption-window ytp-caption-window-bottom";
         captionWindow.style.cssText = `
                     touch-action: none;
-                    background-color: rgba(8, 8, 8, 0.25);
                     text-align: center;
                     position: absolute;
                     left: 50%;
@@ -162,7 +161,7 @@
                     display: inline-block;
                     white-space: pre-wrap;
                     background: rgba(8, 8, 8, 0.75);
-                    font-size: 2.5vw;
+                    font-size: 3vw;
                     color: rgb(255, 255, 255);
                     fill: rgb(255, 255, 255);
                 `;
@@ -176,7 +175,7 @@
         color: white;
         padding: 8px;
         border-radius: 4px;
-        font-size: 16px;
+        font-size: 24px;
         top: -40px;
         left: 50%;
         transform: translateX(-50%);
@@ -232,9 +231,23 @@
         };
       }
 
+      let currentTranslation = {
+        word: null,
+        translation: null,
+        visible: false,
+      };
+
       function updateSubtitle(currentSubtitle) {
         while (ytpCaptionSegment.firstChild) ytpCaptionSegment.removeChild(ytpCaptionSegment.firstChild);
-        translationBox.style.display = "none"; // Hide translation box by default
+
+        // Only hide translation box if no word is being hovered
+        if (!currentTranslation.visible) {
+          translationBox.style.display = "none";
+        } else {
+          // Maintain translation box state
+          translationBox.textContent = currentTranslation.translation;
+          translationBox.style.display = "block";
+        }
 
         if (!currentSubtitle) {
           ytpCaptionSegment.style.display = "none";
@@ -319,14 +332,32 @@
                 translationBox.style.display = "block";
               }, 200);
 
-              wordSpan.addEventListener("mouseenter", showTranslation);
+              wordSpan.addEventListener("mouseenter", async () => {
+                currentTranslation.word = word;
+                currentTranslation.visible = true;
+
+                // Only fetch translation if not already cached
+                if (!translationCache.has(word)) {
+                  const translation = await translateText(word);
+                  translationBox.textContent = translation;
+                  currentTranslation.translation = translation;
+                } else {
+                  translationBox.textContent = translationCache.get(word);
+                  currentTranslation.translation = translationCache.get(word);
+                }
+
+                translationBox.style.display = "block";
+              });
+
               wordSpan.addEventListener("mouseleave", () => {
+                currentTranslation.visible = false;
                 translationBox.style.display = "none";
               });
 
               lineSpan.appendChild(wordSpan);
             });
           } else {
+            // For regular words without timing
             const words = line.split(" ");
             words.forEach((word) => {
               const wordSpan = document.createElement("span");
@@ -335,14 +366,25 @@
               wordSpan.style.color = "#ffffff";
               wordSpan.style.cursor = "pointer";
 
-              const showTranslation = debounce(async () => {
-                const translation = await translateText(word);
-                translationBox.textContent = translation;
-                translationBox.style.display = "block";
-              }, 200);
+              // Same approach for non-timed words
+              wordSpan.addEventListener("mouseenter", async () => {
+                currentTranslation.word = word;
+                currentTranslation.visible = true;
 
-              wordSpan.addEventListener("mouseenter", showTranslation);
+                if (!translationCache.has(word)) {
+                  const translation = await translateText(word);
+                  translationBox.textContent = translation;
+                  currentTranslation.translation = translation;
+                } else {
+                  translationBox.textContent = translationCache.get(word);
+                  currentTranslation.translation = translationCache.get(word);
+                }
+
+                translationBox.style.display = "block";
+              });
+
               wordSpan.addEventListener("mouseleave", () => {
+                currentTranslation.visible = false;
                 translationBox.style.display = "none";
               });
 
@@ -353,7 +395,6 @@
           ytpCaptionSegment.appendChild(lineSpan);
         });
       }
-
       // Add CSS
       const styleSheet = document.createElement("style");
       styleSheet.textContent = `
@@ -369,7 +410,7 @@
                         font-size: 20px;
                     }
                     .translation-box {
-                        font-size: 14px;
+                        font-size: 24px;
                         padding: 6px;
                     }
                 }
