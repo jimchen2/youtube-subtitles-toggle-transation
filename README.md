@@ -2,7 +2,7 @@
 
 ![image](https://github.com/user-attachments/assets/f87816e2-8148-40ea-a78d-0247f42b3cc1)
 
-![image](https://github.com/user-attachments/assets/45ee690d-1945-4c21-9811-87890751e855)
+![image](https://github.com/user-attachments/assets/7613bbee-9fc1-4827-9ca7-0555cbf4738a)
 
 ## YouTube Toggle Translate Subtitiles
 
