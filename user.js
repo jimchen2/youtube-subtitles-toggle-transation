@@ -3,6 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      1.3
 // @license      Unlicense
+// @description  Toggle translation for YouTube videos
 // @author       Jim Chen
 // @homepage     https://jimchen.me
 // @match        https://www.youtube.com/*
@@ -194,15 +195,6 @@
       var subtitleQueue = parseVTT(subtitleData);
 
       // Step 2 - Create HTML Element
-      // Example:
-      // <div class="caption-window ytp-caption-window-bottom" id="caption-window-_52" dir="ltr" tabindex="0" draggable="true" style="touch-action: none; background-color: rgba(8, 8, 8, 0.25); text-align: center; left: 50%; width: 511px; margin-left: -255.5px; bottom: 2%;">
-      //   <span class="captions-text" style="overflow-wrap: normal; display: block;">
-      //     <span class="caption-visual-line" style="display: block;">
-      //       <span class="ytp-caption-segment" style="display: inline-block; white-space: pre-wrap; background: rgba(8, 8, 8, 0.75); font-size: 25.475px; color: rgb(255, 255, 255); fill: rgb(255, 255, 255);">если он отключит Starlink, мы с вами&nbsp;</span>
-      //     </span>
-      //   </span>
-      // </div>
-      // from Language Reactor
       // Add Sliding Effect
       // `coloredSpan.style.cssText`
       // #ffffff 50% for subtitles displayed,  #888888 for upcoming subtitles
@@ -220,16 +212,17 @@
         captionWindow.className = "caption-window ytp-caption-window-bottom";
         captionWindow.dir = "ltr";
         captionWindow.tabIndex = 0;
-        captionWindow.draggable = true;
         captionWindow.style.cssText = `
-                touch-action: none;
-                background-color: rgba(8, 8, 8, 0.25);
-                text-align: center;
-                left: 50%;
-                width: 511px;
-                margin-left: -255.5px;
-                bottom: 2%;
-            `;
+    touch-action: none;
+    background-color: rgba(8, 8, 8, 0.25);
+    text-align: center;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 10%;
+    width: 90%; /* Prevents overflow on smaller screens */
+    max-width: 800px; /* Optional: Limits width on larger screens */
+  `;
 
         const captionsText = document.createElement("span");
         captionsText.className = "captions-text";
@@ -242,35 +235,39 @@
         const ytpCaptionSegment = document.createElement("span");
         ytpCaptionSegment.className = "ytp-caption-segment";
         ytpCaptionSegment.style.cssText = `
-                display: inline-block;
-                white-space: pre-wrap;
-                background: rgba(8, 8, 8, 0.75);
-                font-size: 25.475px;
-                color: rgb(255, 255, 255);
-                fill: rgb(255, 255, 255);
-                position: relative;
-            `;
+    display: inline-block;
+    white-space: pre-wrap;
+    background: rgba(8, 8, 8, 0.75);
+    font-size: 2.5vw; /* Scales with viewport width */
+    color: rgb(255, 255, 255);
+    fill: rgb(255, 255, 255);
+  `;
 
         const textContent = "Userscript for Subtitles Starting";
         const coloredSpan = document.createElement("span");
         coloredSpan.textContent = textContent;
         coloredSpan.style.cssText = `
-                background: linear-gradient(to right, #ffffff 50%, #888888 50%);
-                background-size: 200% 100%;
-                background-position: 100%;
-                color: transparent;
-                background-clip: text;
-                -webkit-background-clip: text;
-                animation: slideColor 10s linear infinite;
-            `;
+    background: linear-gradient(to right, #ffffff 50%, #888888 50%);
+    background-size: 200% 100%;
+    background-position: 100%;
+    color: transparent;
+    background-clip: text;
+    -webkit-background-clip: text;
+    animation: slideColor 10s linear infinite;
+  `;
 
         const styleSheet = document.createElement("style");
         styleSheet.textContent = `
-                @keyframes slideColor {
-                    0% { background-position: 100%; }
-                    100% { background-position: 0%; }
-                }
-            `;
+    @keyframes slideColor {
+      0% { background-position: 100%; }
+      100% { background-position: 0%; }
+    }
+    @media (max-width: 768px) {
+      .ytp-caption-segment {
+        font-size: 20px; /* Fixed size for mobile */
+      }
+    }
+  `;
         document.head.appendChild(styleSheet);
 
         ytpCaptionSegment.appendChild(coloredSpan);
@@ -403,6 +400,7 @@
       }
 
       // Step 5 - Add Hover Effect with Translation
+      // Use Google Translation API https://translate.googleapis.com
       // For each word, not sentence
       // Add an eventlistener to Subtitles Hovering
       console.log(`[Dual Subs] Starting Step 5, Adding Hover Translation Effect`);
