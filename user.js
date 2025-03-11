@@ -403,6 +403,195 @@
       // Use Google Translation API https://translate.googleapis.com
       // For each word, not sentence
       // Add an eventlistener to Subtitles Hovering
+
+      // Add Translation Function
+      async function translateText(text, targetLang = "en") {
+        try {
+          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+          const response = await fetch(url);
+          const data = await response.json();
+          // Google Translate returns an array where [0][0][0] is the translated text
+          return data[0][0][0];
+        } catch (error) {
+          console.error("[Dual Subs] Translation error:", error);
+          return text; // Return original text on error
+        }
+      }
+
+      function addHoverTranslation(ytpCaptionSegment) {
+        // Add CSS for tooltip
+        const styleSheet = document.createElement("style");
+        styleSheet.textContent = `
+        .translation-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translateY(-100%);
+            margin-bottom: 5px;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.1s;
+        }
+        .subtitle-word:hover .translation-tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+    `;
+        document.head.appendChild(styleSheet);
+
+        // Modify the updateSubtitle function to add hover functionality
+        updateSubtitle = async function (currentSubtitle) {
+          while (ytpCaptionSegment.firstChild) ytpCaptionSegment.removeChild(ytpCaptionSegment.firstChild);
+
+          if (!currentSubtitle) {
+            ytpCaptionSegment.style.display = "none";
+            return;
+          }
+
+          ytpCaptionSegment.style.display = "inline-block";
+
+          for (const line of currentSubtitle.textLines) {
+            const lineSpan = document.createElement("span");
+            lineSpan.style.display = "block";
+
+            if (line.includes("<c>")) {
+              const currentTime = currentVideo.currentTime;
+              const timeTagRegex = /<(\d{2}:\d{2}:\d{2}\.\d{3})><c>(.*?)<\/c>/g;
+              let matches = [];
+              let match;
+              let lastIndex = 0;
+              let wordArray = [];
+              let timeArray = [];
+
+              while ((match = timeTagRegex.exec(line)) !== null) {
+                const timeStr = match[1];
+                const text = match[2];
+                const time = parseVTTTime(timeStr);
+
+                if (match.index > lastIndex) {
+                  const untaggedText = line.slice(lastIndex, match.index).trim();
+                  if (untaggedText) {
+                    wordArray.push(untaggedText);
+                    timeArray.push(currentSubtitle.start);
+                  }
+                }
+
+                wordArray.push(text);
+                timeArray.push(time);
+                matches.push({ time, text });
+                lastIndex = timeTagRegex.lastIndex;
+              }
+
+              if (lastIndex < line.length) {
+                const untaggedText = line.slice(lastIndex).trim();
+                if (untaggedText) {
+                  wordArray.push(untaggedText);
+                  timeArray.push(currentSubtitle.start);
+                }
+              }
+
+              let currentWordIndex = 0;
+              for (let i = 0; i < wordArray.length; i++) {
+                if (currentTime >= timeArray[i]) {
+                  currentWordIndex = i;
+                } else {
+                  break;
+                }
+              }
+
+              for (let index = 0; index < wordArray.length; index++) {
+                const word = wordArray[index];
+                const wordContainer = document.createElement("span");
+                wordContainer.className = "subtitle-word";
+                wordContainer.style.position = "relative";
+
+                const wordSpan = document.createElement("span");
+                wordSpan.textContent = word + " ";
+
+                if (index < currentWordIndex) {
+                  wordSpan.style.color = "#ffffff";
+                } else if (index === currentWordIndex && currentTime >= timeArray[index]) {
+                  const startTime = timeArray[index];
+                  const endTime = index + 1 < timeArray.length ? timeArray[index + 1] : currentSubtitle.end;
+                  const progress = (currentTime - startTime) / (endTime - startTime);
+                  wordSpan.style.cssText = `
+                            background: linear-gradient(to right, #ffffff 50%, #888888 50%);
+                            background-size: 200% 100%;
+                            background-position: ${100 - progress * 100}%;
+                            color: transparent;
+                            background-clip: text;
+                            -webkit-background-clip: text;
+                            transition: background-position 0.1s linear;
+                        `;
+                } else {
+                  wordSpan.style.color = "#888888";
+                }
+
+                // Add translation tooltip
+                const tooltip = document.createElement("span");
+                tooltip.className = "translation-tooltip";
+
+                // Get translation and set it
+                translateText(word).then((translation) => {
+                  tooltip.textContent = translation;
+                });
+
+                // Position tooltip on hover
+                wordContainer.addEventListener("mousemove", (e) => {
+                  tooltip.style.left = `${e.offsetX}px`;
+                  tooltip.style.top = "0px";
+                });
+
+                wordContainer.appendChild(wordSpan);
+                wordContainer.appendChild(tooltip);
+                lineSpan.appendChild(wordContainer);
+              }
+            } else {
+              // Handle simple lines without timing tags
+              const words = line.split(" ");
+              for (const word of words) {
+                const wordContainer = document.createElement("span");
+                wordContainer.className = "subtitle-word";
+                wordContainer.style.position = "relative";
+
+                const wordSpan = document.createElement("span");
+                wordSpan.textContent = word + " ";
+                wordSpan.style.color = "#ffffff";
+
+                const tooltip = document.createElement("span");
+                tooltip.className = "translation-tooltip";
+
+                translateText(word).then((translation) => {
+                  tooltip.textContent = translation;
+                });
+
+                wordContainer.addEventListener("mousemove", (e) => {
+                  tooltip.style.left = `${e.offsetX}px`;
+                  tooltip.style.top = "0px";
+                });
+
+                wordContainer.appendChild(wordSpan);
+                wordContainer.appendChild(tooltip);
+                lineSpan.appendChild(wordContainer);
+              }
+            }
+
+            ytpCaptionSegment.appendChild(lineSpan);
+          }
+        };
+
+        // Call the modified updateSubtitle once to initialize
+        updateSubtitle(subtitleQueue.find((sub) => currentVideo.currentTime >= sub.start && currentVideo.currentTime <= sub.end));
+      }
+
+      // Call this new function right after creating ytpCaptionSegment
+      addHoverTranslation(ytpCaptionSegment);
+
       console.log(`[Dual Subs] Starting Step 5, Adding Hover Translation Effect`);
     } catch (error) {
       if (maxRetries > 0) {
