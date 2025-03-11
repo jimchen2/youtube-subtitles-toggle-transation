@@ -78,11 +78,48 @@
   }
 
   async function addOneSubtitle(url, maxRetries = 5, delay = 1000) {
+    // Step 1. Parse VTT
+    // Step 2. Create HTML Element
+    // Step 3. Set up Event Listener
+    // Step 4. Display Subtitle and Hover Translate
+
     let currentVideo = document.querySelector("video");
     if (!currentVideo) return;
 
     try {
-      // Step 1: Parse VTT
+      // Step 1 - Parse VTT
+      // Example:
+
+      // 00:00:00.480 --> 00:00:02.950 align:start position:0%
+      // [музыка]
+      // в<00:00:00.640><c> тот</c><00:00:00.799><c> день</c><00:00:01.000><c> КСИ</c><00:00:01.439><c> решила</c><00:00:01.800><c> встать</c><00:00:02.080><c> в</c><00:00:02.200><c> 4</c><00:00:02.639><c> утра</c>
+
+      // 00:00:02.950 --> 00:00:02.960 align:start position:0%
+      // в тот день КСИ решила встать в 4 утра
+
+      // 00:00:02.960 --> 00:00:05.869 align:start position:0%
+      // в тот день КСИ решила встать в 4 утра
+      // чтобы<00:00:03.240><c> подготовиться</c><00:00:03.840><c> к</c>
+
+      // 00:00:05.869 --> 00:00:05.879 align:start position:0%
+      // чтобы подготовиться к
+
+      // Processed like:
+
+      // Start: 00:00:00.480 End: 00:00:02.950
+      // Textlines[0]: [музыка]
+      //  Textlines[1]: в<00:00:00.640><c> тот</c><00:00:00.799><c> день</c><00:00:01.000><c> КСИ</c><00:00:01.439><c> решила</c><00:00:01.800><c> встать</c><00:00:02.080><c> в</c><00:00:02.200><c> 4</c><00:00:02.639><c> утра</c>
+
+      // Start: 00:00:02.950 End: 00:00:02.960
+      // Textlines[0]:  в тот день КСИ решила встать в 4 утра
+
+      // Start: 00:00:02.960 End: 00:00:05.869
+      // Textlines[0]:  в тот день КСИ решила встать в 4 утра
+
+      //  Textlines[1]:  чтобы<00:00:03.240><c> подготовиться</c><00:00:03.840><c> к</c>
+
+      // Start: 00:00:05.869 End: 00:00:05.879
+      // Textlines[0]: чтобы подготовиться к
       console.log(`[Dual Subs] Starting Step 1, Subtitle URL ${url}`);
       const response = await fetch(url);
       const subtitleData = await response.text();
@@ -125,7 +162,11 @@
 
       const subtitleQueue = parseVTT(subtitleData);
 
-      // Step 2: Create HTML Elements with Fixed Translation Box
+      // Step 2 - Create HTML Element
+      // Add Sliding Effect
+      // `coloredSpan.style.cssText`
+      // #ffffff 50% for subtitles displayed,  #888888 for upcoming subtitles
+      // `animation: slideColor 10s linear` the sliding time
       console.log(`[Dual Subs] Starting Step 2, Trying to Insert Subtitle Element`);
       function createCaptionWindow() {
         const videoPlayer = document.querySelector(".html5-video-player");
@@ -137,16 +178,16 @@
         const captionWindow = document.createElement("div");
         captionWindow.className = "caption-window ytp-caption-window-bottom";
         captionWindow.style.cssText = `
-                  touch-action: none;
-                  background-color: rgba(8, 8, 8, 0.25);
-                  text-align: center;
-                  position: absolute;
-                  left: 50%;
-                  transform: translateX(-50%);
-                  bottom: 10%;
-                  width: 90%;
-                  max-width: 800px;
-              `;
+                    touch-action: none;
+                    background-color: rgba(8, 8, 8, 0.25);
+                    text-align: center;
+                    position: absolute;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    bottom: 10%;
+                    width: 90%;
+                    max-width: 800px;
+                `;
 
         const captionsText = document.createElement("span");
         captionsText.className = "captions-text";
@@ -159,30 +200,30 @@
         const ytpCaptionSegment = document.createElement("span");
         ytpCaptionSegment.className = "ytp-caption-segment";
         ytpCaptionSegment.style.cssText = `
-                  display: inline-block;
-                  white-space: pre-wrap;
-                  background: rgba(8, 8, 8, 0.75);
-                  font-size: 2.5vw;
-                  color: rgb(255, 255, 255);
-                  fill: rgb(255, 255, 255);
-              `;
+                    display: inline-block;
+                    white-space: pre-wrap;
+                    background: rgba(8, 8, 8, 0.75);
+                    font-size: 2.5vw;
+                    color: rgb(255, 255, 255);
+                    fill: rgb(255, 255, 255);
+                `;
 
         // Add Fixed Translation Box
         const translationBox = document.createElement("div");
         translationBox.className = "translation-box";
         translationBox.style.cssText = `
-                  position: absolute;
-                  background: rgba(0, 0, 0, 0.9);
-                  color: white;
-                  padding: 8px;
-                  border-radius: 4px;
-                  font-size: 16px;
-                  top: -40px;
-                  left: 50%;
-                  transform: translateX(-50%);
-                  z-index: 9999;
-                  display: none;
-              `;
+                    position: absolute;
+                    background: rgba(0, 0, 0, 0.9);
+                    color: white;
+                    padding: 8px;
+                    border-radius: 4px;
+                    font-size: 16px;
+                    top: -40px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    z-index: 9999;
+                    display: none;
+                `;
 
         captionWindow.appendChild(translationBox);
         captionVisualLine.appendChild(ytpCaptionSegment);
@@ -203,8 +244,10 @@
         updateSubtitle(currentSubtitle);
       });
 
-      // Step 4: Display Subtitle and Fixed Translation
-      const translationCache = new Map();
+      // Step 4 - Display Subtitle
+      // Use Google Translation API https://translate.googleapis.com
+      // For each word, not sentence
+      // Add an eventlistener to Subtitles Hovering            const translationCache = new Map();
 
       async function translateText(text, targetLang = "en") {
         if (translationCache.has(text)) return translationCache.get(text);
@@ -298,14 +341,14 @@
                 const endTime = index + 1 < timeArray.length ? timeArray[index + 1] : currentSubtitle.end;
                 const progress = (currentTime - startTime) / (endTime - startTime);
                 wordSpan.style.cssText = `
-                                  background: linear-gradient(to right, #ffffff 50%, #888888 50%);
-                                  background-size: 200% 100%;
-                                  background-position: ${100 - progress * 100}%;
-                                  color: transparent;
-                                  background-clip: text;
-                                  -webkit-background-clip: text;
-                                  transition: background-position 0.1s linear;
-                              `;
+                                    background: linear-gradient(to right, #ffffff 50%, #888888 50%);
+                                    background-size: 200% 100%;
+                                    background-position: ${100 - progress * 100}%;
+                                    color: transparent;
+                                    background-clip: text;
+                                    -webkit-background-clip: text;
+                                    transition: background-position 0.1s linear;
+                                `;
               } else {
                 wordSpan.style.color = "#888888";
               }
@@ -355,23 +398,23 @@
       // Add CSS
       const styleSheet = document.createElement("style");
       styleSheet.textContent = `
-              @keyframes slideColor {
-                  0% { background-position: 100%; }
-                  100% { background-position: 0%; }
-              }
-              .subtitle-word:hover {
-                  text-decoration: underline;
-              }
-              @media (max-width: 768px) {
-                  .ytp-caption-segment {
-                      font-size: 20px;
-                  }
-                  .translation-box {
-                      font-size: 14px;
-                      padding: 6px;
-                  }
-              }
-          `;
+                @keyframes slideColor {
+                    0% { background-position: 100%; }
+                    100% { background-position: 0%; }
+                }
+                .subtitle-word:hover {
+                    text-decoration: underline;
+                }
+                @media (max-width: 768px) {
+                    .ytp-caption-segment {
+                        font-size: 20px;
+                    }
+                    .translation-box {
+                        font-size: 14px;
+                        padding: 6px;
+                    }
+                }
+            `;
       document.head.appendChild(styleSheet);
 
       console.log(`[Dual Subs] Subtitle and Translation Setup Complete`);
