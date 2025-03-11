@@ -316,7 +316,6 @@
               const showTranslation = debounce(async () => {
                 const translation = await translateText(word);
                 translationBox.textContent = translation;
-                translationBox.style.opacity = "0"; 
                 translationBox.style.display = "block";
               }, 200);
 
