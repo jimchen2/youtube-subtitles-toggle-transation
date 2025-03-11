@@ -209,7 +209,7 @@
                     display: inline-block;
                     white-space: pre-wrap;
                     background: rgba(8, 8, 8, 0.75);
-                    font-size: 3vw;
+                    font-size: 2.5vw;
                     color: rgb(255, 255, 255);
                     fill: rgb(255, 255, 255);
                 `;
@@ -559,7 +559,7 @@
                 display: inline-block;
                 white-space: pre-wrap;
                 background: rgba(8, 8, 8, 0.75);
-                font-size: 3vw;
+                font-size: 2.5vw;
                 color: rgb(255, 255, 255);
                 fill: rgb(255, 255, 255);
             `;
