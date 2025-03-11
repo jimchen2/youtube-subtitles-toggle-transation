@@ -84,17 +84,18 @@
   }
 
   async function addOneSubtitle(url, maxRetries = 5, delay = 1000) {
-    // 1. Parse VTT
-    // 2. Create HTML Element
-    // 3. Display Subtitle
-    // 4. Add Translation
+    // Step 1. Parse VTT
+    // Step 2. Create HTML Element
+    // Step 3. Set up Event Listener
+    // Step 4. Display Subtitle
+    // Step 5. Add Translation
 
     let currentVideo = null;
     currentVideo = document.querySelector("video");
     if (!currentVideo) return;
 
     try {
-      // Step 1 - Parse VTT (unchanged)
+      // Step 1 - Parse VTT
       // Example:
 
       // 00:00:00.480 --> 00:00:02.950 align:start position:0%
@@ -205,6 +206,9 @@
       // </div>
       // from Language Reactor
       // Add Sliding Effect
+      // `coloredSpan.style.cssText`
+      // #ffffff 50% for subtitles displayed,  #888888 for upcoming subtitles
+      // `animation: slideColor 10s linear` the sliding time
 
       console.log(`[Dual Subs] Starting Step 2, Trying to Insert Subtitle Element`);
       function createCaptionWindow() {
@@ -253,13 +257,13 @@
         const coloredSpan = document.createElement("span");
         coloredSpan.textContent = textContent;
         coloredSpan.style.cssText = `
-                background: linear-gradient(to right, #FFFDD0 0%, #FFFDD0 50%, #ffffff 50%, #ffffff 100%);
+                background: linear-gradient(to right, #ffffff 50%, #888888 50%);
                 background-size: 200% 100%;
                 background-position: 100%;
                 color: transparent;
                 background-clip: text;
                 -webkit-background-clip: text;
-                animation: slideColor 3s linear infinite;
+                animation: slideColor 10s linear infinite;
             `;
 
         const styleSheet = document.createElement("style");
@@ -281,16 +285,24 @@
       }
 
       var ytpCaptionSegment = createCaptionWindow();
+      if (!ytpCaptionSegment) return;
 
-      // Step 3 - Display Subtitle
-      console.log(`[Dual Subs] Starting Step 3, Trying to Insert the Subtitles into the Elements Created`);
+      // Step 3 - Setup Event Listener for Subtitle Time Change
+
+      function setupTimeUpdateListener() {
+        currentVideo.addEventListener("timeupdate", () => {
+          const currentTime = currentVideo.currentTime;
+          const currentSubtitle = subtitleQueue.find((sub) => currentTime >= sub.start && currentTime <= sub.end);
+          updateSubtitle(currentSubtitle);
+        });
+      }
+      setupTimeUpdateListener();
+
+      // Step 4 - Display Subtitle
+      console.log(`[Dual Subs] Starting Step 4, Trying to Insert the Subtitles into the Elements Created`);
+
       function updateSubtitle(currentSubtitle) {
-        if (!ytpCaptionSegment) return;
-
-        while (ytpCaptionSegment.firstChild) {
-          ytpCaptionSegment.removeChild(ytpCaptionSegment.firstChild);
-        }
-
+        while (ytpCaptionSegment.firstChild) ytpCaptionSegment.removeChild(ytpCaptionSegment.firstChild);
         if (currentSubtitle) {
           console.log(`[Dual Subs] currentSubtitle: ${currentSubtitle.textLines.join(" | ")}`);
           ytpCaptionSegment.style.display = "inline-block";
@@ -319,7 +331,7 @@
 
                     const firstTagTime = matches.length === 0 ? time : matches[0].time;
                     if (currentTime >= firstTagTime) {
-                      untaggedSpan.style.color = "#FFFDD0";
+                      untaggedSpan.style.color = "#000000";
                     } else if (currentTime > currentSubtitle.start) {
                       const duration = firstTagTime - currentSubtitle.start;
                       const progress = (currentTime - currentSubtitle.start) / duration;
@@ -362,7 +374,7 @@
 
                 if (currentTime >= time && currentTime < nextTime) {
                   span.style.cssText = `
-                                    background: linear-gradient(to right, #FFFDD0 0%, #FFFDD0 50%, #ffffff 50%, #ffffff 100%);
+                                    background: linear-gradient(to right, #ffffff 50%, #888888 50%);
                                     background-size: 200% 100%;
                                     background-position: ${((currentTime - time) / (nextTime - time)) * 100}%;
                                     color: transparent;
@@ -371,7 +383,7 @@
                                     transition: background-position 0.1s linear;
                                 `;
                 } else if (currentTime >= nextTime) {
-                  span.style.color = "#FFFDD0";
+                  span.style.color = "#ffffff";
                 }
 
                 lineSpan.appendChild(span);
@@ -388,75 +400,67 @@
         }
       }
 
-      function setupTimeUpdateListener() {
-        currentVideo.addEventListener("timeupdate", () => {
-          const currentTime = currentVideo.currentTime;
-          const currentSubtitle = subtitleQueue.find((sub) => currentTime >= sub.start && currentTime <= sub.end);
-          updateSubtitle(currentSubtitle);
-        });
-      }
+      // // Step 5 - Add Hover Effect with Translation
+      // console.log(`[Dual Subs] Starting Step 4, Adding Hover Translation Effect`);
+      // function addHoverTranslation() {
+      //   const captionSegment = document.querySelector(".ytp-caption-segment");
+      //   if (!captionSegment) {
+      //     console.error("[Dual Subs] Caption segment not found for translation setup");
+      //     return;
+      //   }
 
-      setupTimeUpdateListener();
+      //   // Function to translate text to English using Google Translate API
+      //   async function translateToEnglish(text) {
+      //     try {
+      //       const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`);
+      //       const data = await response.json();
+      //       return data[0][0][0]; // Extract translated text
+      //     } catch (error) {
+      //       console.error("[Dual Subs] Translation error:", error);
+      //       return "Translation failed";
+      //     }
+      //   }
 
-      // Step 4 - Add Hover Effect with Translation
-      console.log(`[Dual Subs] Starting Step 4, Adding Hover Translation Effect`);
-      function addHoverTranslation() {
-        const captionSegment = document.querySelector(".ytp-caption-segment");
-        if (!captionSegment) {
-          console.error("[Dual Subs] Caption segment not found for translation setup");
-          return;
-        }
+      //   // Add hover functionality to the entire caption segment
+      //   let tooltip = null;
 
-        // Function to translate text to English using Google Translate API
-        async function translateToEnglish(text) {
-          try {
-            const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`);
-            const data = await response.json();
-            return data[0][0][0]; // Extract translated text
-          } catch (error) {
-            console.error("[Dual Subs] Translation error:", error);
-            return "Translation failed";
-          }
-        }
+      //   captionSegment.addEventListener("mouseenter", async function () {
+      //     const originalText = this.textContent.trim();
+      //     const translation = await translateToEnglish(originalText);
 
-        // Add hover functionality to the entire caption segment
-        let tooltip = null;
+      //     // Create tooltip
+      //     tooltip = document.createElement("div");
+      //     tooltip.textContent = translation;
+      //     tooltip.style.cssText = `
+      //               position: absolute;
+      //               background: rgba(0, 0, 0, 0.9);
+      //               color: white;
+      //               padding: 5px 10px;
+      //               border-radius: 3px;
+      //               font-size: 14px;
+      //               bottom: 100%;
+      //               left: 50%;
+      //               transform: translateX(-50%);
+      //               z-index: 1000;
+      //               white-space: nowrap;
+      //           `;
+      //     this.appendChild(tooltip);
+      //   });
 
-        captionSegment.addEventListener("mouseenter", async function () {
-          const originalText = this.textContent.trim();
-          const translation = await translateToEnglish(originalText);
+      //   captionSegment.addEventListener("mouseleave", function () {
+      //     if (tooltip) {
+      //       tooltip.remove();
+      //       tooltip = null;
+      //     }
+      //   });
 
-          // Create tooltip
-          tooltip = document.createElement("div");
-          tooltip.textContent = translation;
-          tooltip.style.cssText = `
-                    position: absolute;
-                    background: rgba(0, 0, 0, 0.9);
-                    color: white;
-                    padding: 5px 10px;
-                    border-radius: 3px;
-                    font-size: 14px;
-                    bottom: 100%;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    z-index: 1000;
-                    white-space: nowrap;
-                `;
-          this.appendChild(tooltip);
-        });
+      //   // Style the caption segment to indicate it's hoverable
+      //   captionSegment.style.cursor = "pointer";
+      // }
 
-        captionSegment.addEventListener("mouseleave", function () {
-          if (tooltip) {
-            tooltip.remove();
-            tooltip = null;
-          }
-        });
+      // addHoverTranslation();
 
-        // Style the caption segment to indicate it's hoverable
-        captionSegment.style.cursor = "pointer";
-      }
-
-      addHoverTranslation();
+      // End of Step 4
     } catch (error) {
       if (maxRetries > 0) {
         await new Promise((resolve) => setTimeout(resolve, delay));
