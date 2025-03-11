@@ -1,6 +1,6 @@
 [Install](https://update.greasyfork.org/scripts/529505/YouTube%20VK%20Toggle%20Translation%20for%20French%2C%20German%2C%20Russian%2C%20Ukrainian.user.js)
 
-![image](https://github.com/user-attachments/assets/cb64273b-2fcd-44be-9c25-6b952b7e4cb7)
+![image](https://github.com/user-attachments/assets/be8ecb1f-ad76-4ede-9434-f43b64f24ac3)
 
 ![image](https://github.com/user-attachments/assets/f87816e2-8148-40ea-a78d-0247f42b3cc1)
 
