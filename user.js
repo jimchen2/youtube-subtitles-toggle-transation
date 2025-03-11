@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube VK Toggle Translation for French, German, Russian, Ukrainian
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @license      Unlicense
 // @description  Toggle translation for YouTube and VK videos with a fixed translation box
 // @author       Jim Chen
