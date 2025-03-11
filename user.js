@@ -749,9 +749,7 @@
               wordSpan.className = "subtitle-word";
               wordSpan.style.color = "#ffffff";
               wordSpan.style.cursor = "pointer";
-              console.log("Adding listener to:", wordSpan);
               wordSpan.addEventListener("mouseenter", async () => {
-                console.log("aspodijfposajfdposaijdpofjsadpoifj");
 
                 currentTranslation.word = word;
                 currentTranslation.visible = true;
