@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Dual Subtitles for French, German, Russian, Ukrainian
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.3
 // @license      Unlicense
 // @description  Add dual subtitles to YouTube videos
 // @author       Jim Chen
@@ -89,72 +89,110 @@
     // 3. Display Subtitle
     // 4. Add Translation
 
-    try {
-      let currentVideo = null;
-      currentVideo = document.querySelector("video");
-      if (!currentVideo) return;
+    let currentVideo = null;
+    currentVideo = document.querySelector("video");
+    if (!currentVideo) return;
 
+    try {
       // Step 1 - Parse VTT (unchanged)
-      console.log(`[Dual Subs] Starting Step 1, Trying to Fetch and Parse Subtitles`);
+      // Example:
+
+      // 00:00:00.480 --> 00:00:02.950 align:start position:0%
+      // [музыка]
+      // в<00:00:00.640><c> тот</c><00:00:00.799><c> день</c><00:00:01.000><c> КСИ</c><00:00:01.439><c> решила</c><00:00:01.800><c> встать</c><00:00:02.080><c> в</c><00:00:02.200><c> 4</c><00:00:02.639><c> утра</c>
+
+      // 00:00:02.950 --> 00:00:02.960 align:start position:0%
+      // в тот день КСИ решила встать в 4 утра
+
+      // 00:00:02.960 --> 00:00:05.869 align:start position:0%
+      // в тот день КСИ решила встать в 4 утра
+      // чтобы<00:00:03.240><c> подготовиться</c><00:00:03.840><c> к</c>
+
+      // 00:00:05.869 --> 00:00:05.879 align:start position:0%
+      // чтобы подготовиться к
+
+      // Processed like:
+
+      // Start: 00:00:00.480 End: 00:00:02.950
+      // Textlines[0]: [музыка]
+      //  Textlines[1]: в<00:00:00.640><c> тот</c><00:00:00.799><c> день</c><00:00:01.000><c> КСИ</c><00:00:01.439><c> решила</c><00:00:01.800><c> встать</c><00:00:02.080><c> в</c><00:00:02.200><c> 4</c><00:00:02.639><c> утра</c>
+
+      // Start: 00:00:02.950 End: 00:00:02.960
+      // Textlines[0]:  в тот день КСИ решила встать в 4 утра
+
+      // Start: 00:00:02.960 End: 00:00:05.869
+      // Textlines[0]:  в тот день КСИ решила встать в 4 утра
+
+      //  Textlines[1]:  чтобы<00:00:03.240><c> подготовиться</c><00:00:03.840><c> к</c>
+
+      // Start: 00:00:05.869 End: 00:00:05.879
+      // Textlines[0]: чтобы подготовиться к
+
+      console.log(`[Dual Subs] Starting Step 1, Subtitle URL ${url}`);
       const response = await fetch(url);
       const subtitleData = await response.text();
 
+      // Convert timestamp string (e.g., "00:00:02.950") to seconds
       function parseVTTTime(timeStr) {
-        const parts = timeStr.split(/[:,\.]/);
-        return +parts[0] * 3600 + +parts[1] * 60 + +parts[2] + +parts[3] / 1000;
+        const parts = timeStr.split(/[:.]/); // Split on : and . (simpler than /[:,\.]/ since comma isn't used)
+        const hours = parseInt(parts[0], 10);
+        const minutes = parseInt(parts[1], 10);
+        const seconds = parseInt(parts[2], 10);
+        const milliseconds = parseInt(parts[3], 10);
+        return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
       }
 
+      // Parse VTT content into a structured queue
       function parseVTT(subtitleData) {
-        var subtitleQueue = [];
-        const lines = subtitleData.split("\n");
+        const subtitleQueue = [];
+        const lines = subtitleData.trim().split("\n");
         let i = 0;
 
-        while (i < lines.length && !lines[i].includes("-->") && lines[i].trim() !== "") {
+        // Skip header (e.g., "WEBVTT" or other metadata)
+        while (i < lines.length && !lines[i].includes("-->")) {
           i++;
         }
 
+        // Process subtitle blocks
         while (i < lines.length) {
-          if (lines[i].trim() === "") {
+          const line = lines[i].trim();
+
+          if (!line) {
             i++;
             continue;
           }
-          if (lines[i].includes("-->")) {
-            const timeMatch = lines[i].match(/(\d+:\d+:\d+\.\d+)\s+-->\s+(\d+:\d+:\d+\.\d+)/);
-            if (timeMatch) {
-              const [_, start, end] = timeMatch;
-              let textLines = [];
-              let currentLine = "";
-              i++;
 
-              while (i < lines.length && lines[i].trim() !== "") {
-                if (currentLine) {
-                  currentLine += " " + lines[i].trim();
-                } else {
-                  currentLine = lines[i].trim();
-                }
-                i++;
-              }
+          // Look for timestamp line
+          const timeMatch = line.match(/(\d+:\d+:\d+\.\d+)\s+-->\s+(\d+:\d+:\d+\.\d+)/);
+          if (timeMatch) {
+            const start = parseVTTTime(timeMatch[1]);
+            const end = parseVTTTime(timeMatch[2]);
+            const textLines = [];
+            i++;
 
-              textLines = currentLine
-                .split(/\n/)
-                .map((line) => line.trim())
-                .filter((line) => line);
-
-              subtitleQueue.push({
-                start: parseVTTTime(start),
-                end: parseVTTTime(end),
-                textLines: textLines,
-              });
-            } else {
+            // Collect all text lines until next empty line or end
+            while (i < lines.length && lines[i].trim()) {
+              textLines.push(lines[i].trim());
               i++;
             }
+
+            if (textLines.length > 0) {
+              subtitleQueue.push({
+                start,
+                end,
+                textLines,
+              });
+            }
           } else {
-            i++;
+            i++; // Skip malformed or unexpected lines
           }
         }
+
         return subtitleQueue;
       }
+
       var subtitleQueue = parseVTT(subtitleData);
+      console.log(subtitleQueue);
 
       // Step 2 - Create HTML Element
       // Example:
@@ -244,7 +282,7 @@
 
       var ytpCaptionSegment = createCaptionWindow();
 
-      // Step 3 - Display Subtitle (unchanged)
+      // Step 3 - Display Subtitle
       console.log(`[Dual Subs] Starting Step 3, Trying to Insert the Subtitles into the Elements Created`);
       function updateSubtitle(currentSubtitle) {
         if (!ytpCaptionSegment) return;
@@ -417,10 +455,9 @@
         // Style the caption segment to indicate it's hoverable
         captionSegment.style.cursor = "pointer";
       }
+
       addHoverTranslation();
-      console.log(`[Subtitles] Successfully added subtitle display with hover translation. Found ${subtitleQueue.length} subtitles.`);
     } catch (error) {
-      console.error("[Dual Subs] Error:", error);
       if (maxRetries > 0) {
         await new Promise((resolve) => setTimeout(resolve, delay));
         return addOneSubtitle(url, maxRetries - 1, delay);
