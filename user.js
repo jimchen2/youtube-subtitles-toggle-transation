@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube VK Toggle Translation for French, German, Russian, Ukrainian
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6
 // @license      Unlicense
 // @description  Toggle translation for YouTube and VK videos with a fixed translation box
 // @author       Jim Chen
@@ -24,9 +24,18 @@
   observer.observe(document.body, { childList: true, subtree: true });
   handleVideoNavigation();
 
+  // Function to remove existing subtitle and translation elements
+  function cleanupSubtitles() {
+    const captionWindows = document.querySelectorAll(".caption-window");
+    captionWindows.forEach((window) => window.remove());
+  }
+
   async function handleVideoNavigation() {
     if (processingSubtitles) return;
     processingSubtitles = true;
+
+    // Clean up existing subtitles before adding new ones
+    cleanupSubtitles();
 
     let subtitleURL;
     if (window.location.href.includes("youtube.com")) {
@@ -104,7 +113,7 @@
     const vkMatch = url.match(vkPattern);
     if (!vkMatch) return null;
 
-    const subtitleElement =  document.querySelector('[id^="vk_external_ru_"]')
+    const subtitleElement = document.querySelector('[id^="vk_external_ru_"]');
     if (subtitleElement) {
       const subtitleUrl = subtitleElement.getAttribute("src");
       if (subtitleUrl) return subtitleUrl;
@@ -112,7 +121,7 @@
 
     return await new Promise((resolve) => {
       const checkForSubtitle = () => {
-        const subtitleElement =  document.querySelector('[id^="vk_external_ru_"]')
+        const subtitleElement = document.querySelector('[id^="vk_external_ru_"]');
         if (subtitleElement) {
           const subtitleUrl = subtitleElement.getAttribute("src");
           if (subtitleUrl) resolve(subtitleUrl);
@@ -130,7 +139,6 @@
     if (!currentVideo) return;
 
     try {
-      // Step 1: Parse VTT
       console.log(`[Dual Subs] Starting Step 1, Subtitle URL ${url}`);
       const response = await fetch(url);
       const subtitleData = await response.text();
@@ -173,7 +181,6 @@
 
       const subtitleQueue = parseVTT(subtitleData);
 
-      // Step 2: Create HTML Elements with Fixed Translation Box
       console.log(`[Dual Subs] Starting Step 2, Trying to Insert Subtitle Element`);
       function createCaptionWindow() {
         const videoPlayer = document.querySelector(".html5-video-player");
@@ -214,24 +221,23 @@
                     fill: rgb(255, 255, 255);
                 `;
 
-        // Add Fixed Translation Box
         const translationBox = document.createElement("div");
         translationBox.className = "translation-box";
         translationBox.style.cssText = `
-        position: absolute;
-        background: rgba(0, 0, 0, 0.9);
-        color: white;
-        padding: 8px;
-        border-radius: 4px;
-        font-size: 24px;
-        top: -40px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 9999;
-        display: none;
-        transition: opacity 0.1s ease; /* Add smooth fade */
-        opacity: 1;
-    `;
+                    position: absolute;
+                    background: rgba(0, 0, 0, 0.9);
+                    color: white;
+                    padding: 8px;
+                    border-radius: 4px;
+                    font-size: 24px;
+                    top: -40px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    z-index: 9999;
+                    display: none;
+                    transition: opacity 0.1s ease;
+                    opacity: 1;
+                `;
 
         captionWindow.appendChild(translationBox);
         captionVisualLine.appendChild(ytpCaptionSegment);
@@ -245,14 +251,12 @@
       const { ytpCaptionSegment, translationBox } = createCaptionWindow() || {};
       if (!ytpCaptionSegment || !translationBox) return;
 
-      // Step 3: Setup Event Listener
       currentVideo.addEventListener("timeupdate", () => {
         const currentTime = currentVideo.currentTime;
         const currentSubtitle = subtitleQueue.find((sub) => currentTime >= sub.start && currentTime <= sub.end);
         updateSubtitle(currentSubtitle);
       });
 
-      // Step 4: Display Subtitle and Fixed Translation
       const translationCache = new Map();
 
       async function translateText(text, targetLang = "en") {
@@ -270,7 +274,6 @@
         }
       }
 
-      // Debounce function to limit rapid hover events
       function debounce(func, wait) {
         let timeout;
         return function (...args) {
@@ -288,11 +291,9 @@
       function updateSubtitle(currentSubtitle) {
         while (ytpCaptionSegment.firstChild) ytpCaptionSegment.removeChild(ytpCaptionSegment.firstChild);
 
-        // Only hide translation box if no word is being hovered
         if (!currentTranslation.visible) {
           translationBox.style.display = "none";
         } else {
-          // Maintain translation box state
           translationBox.textContent = currentTranslation.translation;
           translationBox.style.display = "block";
         }
@@ -373,7 +374,6 @@
                 wordSpan.style.color = "#888888";
               }
 
-              // Debounced hover for translation
               const showTranslation = debounce(async () => {
                 const translation = await translateText(word);
                 translationBox.textContent = translation;
@@ -384,7 +384,6 @@
                 currentTranslation.word = word;
                 currentTranslation.visible = true;
 
-                // Only fetch translation if not already cached
                 if (!translationCache.has(word)) {
                   const translation = await translateText(word);
                   translationBox.textContent = translation;
@@ -405,7 +404,6 @@
               lineSpan.appendChild(wordSpan);
             });
           } else {
-            // For regular words without timing
             const words = line.split(" ");
             words.forEach((word) => {
               const wordSpan = document.createElement("span");
@@ -414,7 +412,6 @@
               wordSpan.style.color = "#ffffff";
               wordSpan.style.cursor = "pointer";
 
-              // Same approach for non-timed words
               wordSpan.addEventListener("mouseenter", async () => {
                 currentTranslation.word = word;
                 currentTranslation.visible = true;
@@ -443,7 +440,7 @@
           ytpCaptionSegment.appendChild(lineSpan);
         });
       }
-      // Add CSS
+
       const styleSheet = document.createElement("style");
       styleSheet.textContent = `
                 @keyframes slideColor {
@@ -480,7 +477,6 @@
     if (!currentVideo) return;
 
     try {
-      // Step 1: Parse VTT
       console.log(`[Dual Subs VK] Starting Step 1, Subtitle URL ${url}`);
       const response = await fetch(url);
       const subtitleData = await response.text();
@@ -594,14 +590,12 @@
       const { vkCaptionSegment, translationBox } = createCaptionWindow() || {};
       if (!vkCaptionSegment || !translationBox) return;
 
-      // Step 3: Setup Event Listener
       currentVideo.addEventListener("timeupdate", () => {
         const currentTime = currentVideo.currentTime;
         const currentSubtitle = subtitleQueue.find((sub) => currentTime >= sub.start && currentTime <= sub.end);
         updateSubtitle(currentSubtitle);
       });
 
-      // Step 4: Display Subtitle and Fixed Translation
       const translationCache = new Map();
 
       async function translateText(text, targetLang = "en") {
@@ -750,7 +744,6 @@
               wordSpan.style.color = "#ffffff";
               wordSpan.style.cursor = "pointer";
               wordSpan.addEventListener("mouseenter", async () => {
-
                 currentTranslation.word = word;
                 currentTranslation.visible = true;
 
@@ -781,9 +774,8 @@
 
       const styleSheet = document.createElement("style");
       styleSheet.textContent = `
-
             .vk-caption-window-bottom {
-                z-index: 999999 !important; /* Higher than video player elements */
+                z-index: 999999 !important;
                 pointer-events: auto !important;
             }
             .vk-caption-segment {
@@ -802,7 +794,7 @@
                 text-decoration: underline;
             }
             @media (max-width: 768px) {
-                .vk-caption-segment {  /* Changed from ytp-caption-segment */
+                .vk-caption-segment {
                     font-size: 20px;
                 }
                 .translation-box {
@@ -818,7 +810,7 @@
       console.error("[Dual Subs VK] Error:", error);
       if (maxRetries > 0) {
         await new Promise((resolve) => setTimeout(resolve, delay));
-        return addOneSubtitleVK(url, maxRetries - 1, delay); // Fixed recursive call to VK version
+        return addOneSubtitleVK(url, maxRetries - 1, delay);
       }
     }
   }
