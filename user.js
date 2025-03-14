@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube VK Toggle Translation for French, German, Russian, Ukrainian
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      2.0
 // @license      Unlicense
 // @description  Toggle translation for YouTube and VK videos with a fixed translation box
 // @author       Jim Chen
@@ -43,6 +43,7 @@
     } else {
       subtitleURL = await extractSubtitleUrlVK();
     }
+    processingSubtitles = false;
 
     if (!subtitleURL) {
       processingSubtitles = false;
@@ -54,8 +55,6 @@
     } else {
       await addOneSubtitleVK(subtitleURL, 5, 1000);
     }
-
-    processingSubtitles = false;
   }
 
   async function extractSubtitleUrlYouTube() {
