@@ -14,7 +14,6 @@
 (function () {
   "use strict";
   let lastUrl = location.href;
-  let processingSubtitles = false;
   const observer = new MutationObserver(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
@@ -31,9 +30,6 @@
   }
 
   async function handleVideoNavigation() {
-    if (processingSubtitles) return;
-    processingSubtitles = true;
-
     // Clean up existing subtitles before adding new ones
     cleanupSubtitles();
 
@@ -43,13 +39,7 @@
     } else {
       subtitleURL = await extractSubtitleUrlVK();
     }
-    processingSubtitles = false;
-
-    if (!subtitleURL) {
-      processingSubtitles = false;
-      return;
-    }
-
+    if (!subtitleURL) return;
     if (window.location.href.includes("youtube.com")) {
       await addOneSubtitleYouTube(subtitleURL);
     } else {
